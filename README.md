@@ -75,6 +75,16 @@ strip or address bar. Firefox creates the registration on first launch:
 The launcher reads that registry on later launches and supplies Firefox's
 permanent app ID.
 
+Firefox's command-line Taskbar Tab handler initially reduces a URL such as
+`https://ntfy.sh/my-topic` to `https://ntfy.sh`. After the first launch, this
+project corrects Firefox's registration to the complete URL. Restart Firefox
+once after creating a path-specific web app; later launches will open that
+exact path.
+
+Firefox also generates its own application shortcut. When an Omarchy desktop
+entry already launches the same URL, this project marks Firefox's generated
+shortcut `NoDisplay=true` so application search shows only one result.
+
 Firefox currently opens a new Taskbar Tab window each time the launcher runs.
 That behavior comes from Firefox's Taskbar Tabs command-line handler.
 

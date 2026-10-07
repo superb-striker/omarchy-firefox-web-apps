@@ -56,9 +56,78 @@ firefox* | *firefox*.desktop)
     taskbar_id="${hash:0:8}-${hash:8:4}-${hash:12:4}-${hash:16:4}-${hash:20:12}"
   fi
 
-  exec setsid uwsm-app -- "$browser_exec" \
+  setsid uwsm-app -- "$browser_exec" \
     -taskbar-tab "$taskbar_id" -new-window "$1" \
     -profile "$profile" -container 0 "${@:2}"
+
+  # The command-line Taskbar Tab handler stores only scheme://host when it
+  # creates an app without a web manifest. Wait for Firefox to finish writing
+  # the registration, then retain the exact URL requested by Omarchy. Firefox
+  # loads the registry at startup, so a newly corrected path takes effect after
+  # Firefox is restarted once.
+  shortcut=""
+  for _ in {1..50}; do
+    if [[ -f $registry ]]; then
+      taskbar_id=$(jq -r --arg host "$host" \
+        '.taskbarTabs[]? | select(any(.scopes[]?; .hostname == $host)) | .id' \
+        "$registry" 2>/dev/null | head -1)
+      shortcut=$(jq -r --arg id "$taskbar_id" \
+        '.taskbarTabs[]? | select(.id == $id) | .shortcutRelativePath // empty' \
+        "$registry" 2>/dev/null | head -1)
+      [[ -n $taskbar_id && -n $shortcut ]] && break
+    fi
+    sleep 0.1
+  done
+
+  if [[ -n $taskbar_id && -f $registry ]]; then
+    registered_url=$(jq -r --arg id "$taskbar_id" \
+      '.taskbarTabs[]? | select(.id == $id) | .startUrl' \
+      "$registry" 2>/dev/null | head -1)
+
+    if [[ -n $registered_url && $registered_url != "$1" ]]; then
+      temporary=$(mktemp "${registry}.XXXXXX")
+      if jq --arg id "$taskbar_id" --arg url "$1" \
+        '(.taskbarTabs[] | select(.id == $id) | .startUrl) = $url' \
+        "$registry" >"$temporary"; then
+        chmod --reference="$registry" "$temporary"
+        mv "$temporary" "$registry"
+        message="Saved the exact web-app URL. Restart Firefox once before reopening it."
+        echo "$message" >&2
+        command -v notify-send >/dev/null 2>&1 && \
+          notify-send "Firefox web app updated" "$message"
+      else
+        rm -f "$temporary"
+      fi
+    fi
+
+    # Firefox creates its own application shortcut. Hide it when an Omarchy
+    # launcher for the same URL already exists, avoiding duplicate search hits.
+    firefox_shortcut="$HOME/.local/share/applications/$shortcut"
+    omarchy_shortcut=""
+    for candidate in "$HOME/.local/share/applications"/*.desktop; do
+      [[ -f $candidate && $candidate != "$firefox_shortcut" ]] || continue
+      if grep -q '^Exec=.*omarchy-launch-webapp' "$candidate" && \
+         grep -Fq -- "$1" "$candidate"; then
+        omarchy_shortcut=$candidate
+        break
+      fi
+    done
+
+    if [[ -n $omarchy_shortcut && -f $firefox_shortcut ]] && \
+       ! grep -q '^NoDisplay=true$' "$firefox_shortcut"; then
+      temporary=$(mktemp "${firefox_shortcut}.XXXXXX")
+      awk '
+        { print }
+        $0 == "[Desktop Entry]" { print "NoDisplay=true" }
+      ' "$firefox_shortcut" >"$temporary"
+      chmod --reference="$firefox_shortcut" "$temporary"
+      mv "$temporary" "$firefox_shortcut"
+      command -v update-desktop-database >/dev/null 2>&1 && \
+        update-desktop-database "$HOME/.local/share/applications"
+    fi
+  fi
+
+  exit 0
   ;;
 *)
   exec /usr/share/omarchy/bin/omarchy-launch-webapp "$@"
