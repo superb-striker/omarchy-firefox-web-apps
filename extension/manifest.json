@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Omarchy Web Apps",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Open Omarchy web apps as Firefox popup windows using your existing session.",
   "browser_specific_settings": {
     "gecko": { 

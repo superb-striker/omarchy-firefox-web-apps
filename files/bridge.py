@@ -103,7 +103,7 @@ def serve():
                             response = replies.get(timeout=15)
                         except queue.Empty:
                             raise RuntimeError("Firefox did not acknowledge the launch. Check before retrying.")
-                except (OSError, ValueError, RuntimeError) as error:
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
                     response = {"ok": False, "error": str(error)}
                 finally:
                     with pending_lock:

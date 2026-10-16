@@ -2,7 +2,7 @@
 const HOST = "omarchy_firefox_web_apps";
 let port;
 
-function status(connected, detail = "") {
+function updateStatus(connected, detail = "") {
   browser.browserAction.setBadgeText({ text: connected ? "" : "!" });
   browser.browserAction.setTitle({
     title: connected ? "Firefox web apps: connected" : `Firefox web apps: ${detail || "disconnected"}`,
@@ -15,7 +15,7 @@ function connect() {
     const connection = browser.runtime.connectNative(HOST);
     port = connection;
     connection.onMessage.addListener(async (message) => {
-      if (message.type === "ready") { Window.status(true); return; }
+      if (message.type === "ready") { updateStatus(true); return; }
       if (message.type !== "open" || typeof message.id !== "string") return;
       let result;
       try {
@@ -34,12 +34,12 @@ function connect() {
     });
     connection.onDisconnect.addListener(() => {
       if (port === connection) port = null;
-      Window.status(false, connection.error?.message);
+      updateStatus(false, connection.error?.message);
       setTimeout(connect, 3000);
     });
   } catch (error) {
     port = null;
-    Window.status(false, error.message);
+    updateStatus(false, error.message);
     setTimeout(connect, 3000);
   }
 }
