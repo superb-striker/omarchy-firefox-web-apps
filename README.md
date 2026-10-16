@@ -1,127 +1,149 @@
-# Omarchy Web Apps Through Firefox
+# Launch Omarchy Web Apps Through Firefox
 
-Use Firefox for Omarchy web apps without installing Chromium.
+Open Omarchy web apps in Firefox popup windows using your existing Firefox session.
+The popup window hides the tab strip, address bar, and sidebar. No Chromium,
+separate profile, custom CSS, or Taskbar Tabs registry edits are needed.
 
-When Firefox is the default browser, Omarchy's `omarchy-launch-webapp` passes Chromium's `--app=URL` option to a Chromium fallback. 
-If Chromium is absent, the desktop reports an error such as:
+Each launch passes the complete URL to Firefox's `windows.create` API. For example,
+`https://ntfy.sh/topic-1` and `https://ntfy.sh/topic-2` open their respective paths.
+Query strings and fragments are preserved, and repeated launches open new windows.
+The website can still redirect after navigation.
 
-```text
-Path "--app=https:/omarchy.org/manual" does not exist!
-```
+![Omarchy manual in a Firefox popup window with the browser tab strip, address bar, and sidebar hidden](screenshot.png)
 
-This script installs a user-local launcher that uses Firefox's native **Taskbar Tabs** instead. 
-The resulting window has its own application identity and hides the normal tab strip. 
-Non-Firefox browsers continue through Omarchy's original launcher.
-
-## Related Omarchy issues and pull requests
-
-This project is a local solution for [omacom/omarchy#7034][issue-7034], where web-app launches fail when Firefox is the default browser and Chromium is not installed.
-Omarchy falls back to a missing `chromium.desktop`, leaving `uwsm-app` to interpret `--app=<url>` as an executable path.
-
-Several upstream pull requests address the same area, but they make different tradeoffs. Their status as of October 7, 2026 is:
-
-| Link | Status | Relationship to this project |
-| --- | --- | --- |
-| [Issue #7034: launch webapp fails when default browser is Firefox][issue-7034] | Open | Tracks the exact failure reproduced above. |
-| [PR #7039: Support Firefox as a web app browser][pr-7039] | Open, currently conflicting | Adds Firefox to Omarchy's Chromium-style `--app` path. This project instead uses Firefox's native `-taskbar-tab` interface. |
-| [PR #9206: Warn clearly when no Chromium browser can launch a web app][pr-9206] | Open, currently conflicting | Finds another installed Chromium-family browser or reports a useful error. It does not provide Firefox web-app windows. |
-| [PR #11044: Allow web apps to open in the default browser][pr-11044] | Open | Adds an `xdg-open` choice for a normal tab or browser window. It preserves Firefox cookies and extensions, but it does not hide normal browser chrome. |
-| [PR #13879: Launch web apps in an installed Chromium-based browser][pr-13879] | Open | Ports the Chromium fallback and clear-error approach to Omarchy's current launcher. Chromium remains required for an app-style window. |
-| [PR #9172: Fall back to an installed Chromium-family browser][pr-9172] | Closed without merging | Earlier version of the installed-Chromium fallback now represented by newer proposals. |
-| [Issue #9197: No warning when all Chromium-family browsers are removed][issue-9197] | Closed | Tracks the related opaque failure when no supported Chromium browser exists. |
-
-None of the pending approaches currently integrates Firefox Taskbar Tabs into `omarchy-launch-webapp`. 
-This repository fills that gap locally without modifying `/usr/share/omarchy` and can be removed if Omarchy gains equivalent native Firefox support.
+*The Omarchy manual running as a Firefox web app. The navigation on the left belongs to the website.*
 
 ## Requirements
 
-- Omarchy with the Lua Hyprland configuration
-- Firefox with Taskbar Tabs support
-- `jq`, `xdg-utils`, `uwsm`, and GNU core utilities
-- Firefox set as the default web browser
+- Omarchy with its Lua Hyprland configuration
+- Native Firefox (this installer does not support Flatpak or Snap), set as the default browser
+- Python 3 and the standard Omarchy desktop tools
+- The **Omarchy Web Apps** extension installed in the Firefox profile you want to use
 
-Taskbar Tabs are currently experimental on Linux and guarded by the `browser.taskbarTabs.enabled` preference. 
-Mozilla documents the component in its [Firefox source documentation][taskbar-tabs].
+Popup windows use that profile's ordinary, non-private cookie store, so existing
+logins remain available. Container-specific sessions are not selected. Install the
+extension in **one profile only**; the first connected profile owns the bridge.
+These are Firefox windows, without separate Taskbar Tabs application identities.
 
 ## Install
 
-Run the installer from this repository:
+Install the local launcher and native helper:
 
 ```bash
+git clone https://github.com/superb-striker/omarchy-firefox-web-apps.git
+cd omarchy-firefox-web-apps
 ./install.sh
 ```
 
-The installer:
+Then install the signed extension in Firefox:
 
-1. Installs `~/.local/bin/omarchy-launch-webapp`.
-2. Places `~/.local/bin` before Omarchy's system commands for desktop actions.
-3. Enables `browser.taskbarTabs.enabled` in the active Firefox profile.
-4. Reloads Hyprland and checks for configuration errors.
-5. Stores backups under `~/.local/state/omarchy-firefox-web-apps/backups`.
+1. Download the signed [extension `.xpi`][signed-xpi] from [GitHub Releases][releases].
+   If clicking prompts Firefox to install it, you can approve that directly or
+   right-click the link and choose **Save Link As…** to follow the steps below.
+2. If you previously loaded the temporary extension, remove it from
+   `about:debugging#/runtime/this-firefox`. Remove the old popup-test add-on too, if present.
+3. Open `about:addons`, click the gear icon, and choose **Install Add-on From File…**.
+4. Select the downloaded `.xpi` and approve installation of **Omarchy Web Apps**.
 
-Restart Firefox after installation. Firefox reads `user.js` only during startup. 
-You can then use **Ctrl+Space → Learn → Omarchy** normally.
+The signed extension stays installed across Firefox restarts. You do not need to
+load it manually again or submit your own copy to Mozilla for signing.
+The `.xpi` and local helper are both required; installing only the extension is not enough.
+The installer's final message describes temporary loading; use the signed installation
+steps above for everyday use.
 
-## Verify
+Now use **Ctrl+Space → Learn → Omarchy**, or create apps with **Install → Web App**.
+Give separate apps distinct names, as Omarchy uses the name for its desktop filename.
+**Remove → Web App** uses Omarchy's normal removal menu. Removing a shortcut does not
+close an already-open window or erase website data.
 
-Open the Omarchy manual from the menu. Its window should have no regular tab
-strip or address bar. Firefox creates the registration on first launch:
+### Updates
 
-```text
-~/.config/mozilla/firefox/<profile>/taskbartabs/taskbartabs.json
-~/.local/share/applications/firefox.webapp-<id>.desktop
+This extension does not currently configure automatic updates for unlisted releases.
+Download a newer signed `.xpi` from [Releases][releases] and install it through
+`about:addons` using the same steps. Keep the existing extension installed when
+updating a signed version. To update the local helper, pull the repository changes
+and rerun `./install.sh`.
+
+### Development: temporary loading
+
+To test changes to the extension source, open `about:debugging#/runtime/this-firefox`,
+select **Load Temporary Add-on**, and choose `extension/manifest.json`.
+Temporary add-ons disappear when Firefox fully exits; load them again after restarting.
+This step is for development and is not needed with the signed release.
+
+Keep the extension ID `webapps@omarchy-firefox-web-apps.local` unchanged: the native
+helper authorizes that ID. Modified extension builds need a new Mozilla signature
+before permanent installation. See [Mozilla's signing documentation][signing].
+
+## What gets installed
+
+- `~/.local/bin/omarchy-launch-webapp`: sends URLs to the popup bridge when Firefox is default;
+  other browsers use Omarchy's original launcher.
+- `~/.local/bin/omarchy-webapp-remove`: delegates to Omarchy's original remover,
+  replacing the earlier registry-editing override.
+- `~/.local/share/omarchy-firefox-web-apps/bridge.py`: Python native host and local client.
+- Native-host manifests in `~/.config/mozilla/native-messaging-hosts/` and
+  `~/.mozilla/native-messaging-hosts/` for Firefox's modern and legacy locations.
+- A managed PATH block in `~/.config/hypr/hyprland.lua` and an environment.d file.
+
+XDG config, data, and state directories are respected. Backups are stored under
+`~/.local/state/omarchy-firefox-web-apps`. No files in `/usr/share/omarchy` are changed.
+Firefox profile files and Taskbar Tabs registrations are never edited.
+
+## How it works
+
+The extension connects to the native host using Firefox native messaging. The host
+listens on a private Unix socket in your runtime directory. The launcher sends the
+exact URL; the extension opens a non-private popup and acknowledges success.
+The launcher reports an error if Firefox cannot open it. It never retries a URL
+after sending it, avoiding duplicate windows when an acknowledgement is lost.
+
+If the bridge is absent, the launcher starts Firefox and waits up to 12 seconds
+for the extension. The signed extension connects automatically when its Firefox
+profile starts. No background system service is required.
+
+## Verify and troubleshoot
+
+```bash
+"${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-firefox-web-apps/bridge.py" --status
+~/.local/bin/omarchy-launch-webapp 'https://example.org/first?value=a%2Fb#section'
+~/.local/bin/omarchy-launch-webapp 'https://example.org/second'
 ```
 
-The launcher reads that registry on later launches and supplies Firefox's
-permanent app ID.
+The extension's toolbar tooltip reports connection status. If disconnected, check
+that the helper is installed and **Omarchy Web Apps** is enabled in only one profile.
+To verify permanent installation, fully quit and reopen Firefox, then launch a web
+app from Omarchy. The signed extension should reconnect without temporary loading.
 
-Firefox's command-line Taskbar Tab handler initially reduces a URL such as
-`https://ntfy.sh/my-topic` to `https://ntfy.sh`. After the first launch, this
-project corrects Firefox's registration to the complete URL. Restart Firefox
-once after creating a path-specific web app; later launches will open that
-exact path.
-
-Firefox also generates its own application shortcut. When an Omarchy desktop
-entry already launches the same URL, this project marks Firefox's generated
-shortcut `NoDisplay=true` so application search shows only one result.
-
-Firefox currently opens a new Taskbar Tab window each time the launcher runs.
-That behavior comes from Firefox's Taskbar Tabs command-line handler.
+Upgrading from the earlier Taskbar Tabs implementation replaces its launcher and
+removal wrapper. Previously generated Firefox shortcuts and registrations remain;
+this version does not create any more. Existing Omarchy shortcuts retain their URLs.
+A legacy app that exists only as a Firefox-generated shortcut needs to be recreated
+through **Install → Web App** to appear in Omarchy's removal menu.
 
 ## Uninstall
-
-Run:
 
 ```bash
 ./uninstall.sh
 ```
 
-The uninstaller removes only blocks managed by `omarchy-firefox-web-apps` and restores the
-launcher that existed before installation when one was backed up. Restart
-Firefox afterward.
+Then remove the extension in Firefox. The scripts restore backed-up launchers and
+native-host files, remove their managed PATH block, and retain backups. If upgrading
+from the old implementation, old Taskbar Tabs preferences and registrations are left
+alone. Uninstalling does not remove your Omarchy web-app shortcuts or Firefox data.
 
-Firefox's generated Taskbar Tab registration and icon are intentionally left
-in place. Firefox owns those files, and removing them would also discard the
-installed web-app record. They can be removed through Firefox when its web-app
-management interface is available.
+## Related Omarchy issues and pull requests
 
-## How it works
+This addresses [issue #7034][issue-7034]: web-app launching can fail with Firefox as
+the default browser and no Chromium installed, producing the `--app=...` path error.
+[Issue #9197][issue-9197] covers the related missing-Chromium error reporting.
 
-Firefox accepts the following native command-line form:
+Upstream work discussed alongside this project includes [#7039][pr-7039],
+[#9206][pr-9206], [#11044][pr-11044], and [#13879][pr-13879]. Those were reported
+open during development on October 7, 2026; check their pages for current status.
+[#9172][pr-9172] was closed without merging. This project provides a local Firefox
+popup integration while that upstream work evolves.
 
-```text
-firefox -taskbar-tab <id> -new-window <url> -profile <path> -container 0
-```
-
-The local launcher resolves Firefox's active profile, finds an existing app ID
-by hostname, and calls Firefox through `uwsm-app`. On the first launch it sends
-a provisional UUID; Firefox creates the permanent registration and desktop
-entry. The launcher delegates unchanged to `/usr/share/omarchy/bin/omarchy-launch-webapp`
-when Firefox is not the default browser.
-
-No file under `/usr/share/omarchy` is modified.
-
-[taskbar-tabs]: https://firefox-source-docs.mozilla.org/browser/components/taskbartabs/docs/index.html
 [issue-7034]: https://github.com/omacom/omarchy/issues/7034
 [issue-9197]: https://github.com/omacom/omarchy/issues/9197
 [pr-7039]: https://github.com/omacom/omarchy/pull/7039
@@ -129,3 +151,7 @@ No file under `/usr/share/omarchy` is modified.
 [pr-9206]: https://github.com/omacom/omarchy/pull/9206
 [pr-11044]: https://github.com/omacom/omarchy/pull/11044
 [pr-13879]: https://github.com/omacom/omarchy/pull/13879
+
+[releases]: https://github.com/superb-striker/omarchy-firefox-web-apps/releases/latest
+[signing]: https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/
+[signed-xpi]: https://github.com/superb-striker/omarchy-firefox-web-apps/releases/download/v0.2.0/firefox-web-app-extension.xpi
