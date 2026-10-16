@@ -1,135 +1,16 @@
 #!/bin/bash
-
-# Launch Omarchy web apps as native Firefox Taskbar Tabs when Firefox is the
-# default browser. Keep Omarchy's original behavior for every other browser.
-
-if (($# == 0)); then
-  echo "Usage: omarchy-launch-webapp URL [browser arguments...]" >&2
-  exit 2
-fi
-
-browser=$(env -u BROWSER xdg-settings get default-web-browser 2>/dev/null)
+set -euo pipefail
+browser=$(env -u BROWSER xdg-settings get default-web-browser 2>/dev/null || true)
 if [[ -z $browser ]]; then
-  browser=$(xdg-mime query default x-scheme-handler/https 2>/dev/null)
+  browser=$(xdg-mime query default x-scheme-handler/https 2>/dev/null || true)
 fi
-
-case $browser in
-firefox* | *firefox*.desktop)
-  for command in jq setsid uwsm-app; do
-    if ! command -v "$command" >/dev/null 2>&1; then
-      echo "Required command not found: $command" >&2
-      exit 1
+case ${browser,,} in
+  firefox* | *firefox*.desktop)
+    if (($# != 1)); then
+      echo 'Usage: omarchy-launch-webapp HTTP_OR_HTTPS_URL' >&2
+      exit 2
     fi
-  done
-
-  browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' \
-    "$HOME/.local/share/applications/$browser" \
-    "$HOME/.nix-profile/share/applications/$browser" \
-    "/usr/share/applications/$browser" 2>/dev/null | head -1)
-
-  if [[ -z $browser_exec ]]; then
-    echo "Could not resolve the default browser executable from $browser" >&2
-    exit 1
-  fi
-
-  firefox_root="${XDG_CONFIG_HOME:-$HOME/.config}/mozilla/firefox"
-  profile_relative=$(sed -n 's/^Default=//p' "$firefox_root/installs.ini" 2>/dev/null | head -1)
-  profile="$firefox_root/$profile_relative"
-
-  if [[ -z $profile_relative || ! -d $profile ]]; then
-    echo "Could not resolve the active Firefox profile" >&2
-    exit 1
-  fi
-
-  # Firefox assigns the permanent ID when it first registers the site. Reuse
-  # it later and supply a valid provisional UUID for the first launch.
-  host=${1#*://}
-  host=${host%%/*}
-  host=${host%%:*}
-  registry="$profile/taskbartabs/taskbartabs.json"
-  taskbar_id=$(jq -r --arg host "$host" \
-    '.taskbarTabs[]? | select(any(.scopes[]?; .hostname == $host)) | .id' \
-    "$registry" 2>/dev/null | head -1)
-
-  if [[ -z $taskbar_id ]]; then
-    hash=$(printf '%s' "$1" | sha256sum | cut -c1-32)
-    taskbar_id="${hash:0:8}-${hash:8:4}-${hash:12:4}-${hash:16:4}-${hash:20:12}"
-  fi
-
-  setsid uwsm-app -- "$browser_exec" \
-    -taskbar-tab "$taskbar_id" -new-window "$1" \
-    -profile "$profile" -container 0 "${@:2}"
-
-  # The command-line Taskbar Tab handler stores only scheme://host when it
-  # creates an app without a web manifest. Wait for Firefox to finish writing
-  # the registration, then retain the exact URL requested by Omarchy. Firefox
-  # loads the registry at startup, so a newly corrected path takes effect after
-  # Firefox is restarted once.
-  shortcut=""
-  for _ in {1..50}; do
-    if [[ -f $registry ]]; then
-      taskbar_id=$(jq -r --arg host "$host" \
-        '.taskbarTabs[]? | select(any(.scopes[]?; .hostname == $host)) | .id' \
-        "$registry" 2>/dev/null | head -1)
-      shortcut=$(jq -r --arg id "$taskbar_id" \
-        '.taskbarTabs[]? | select(.id == $id) | .shortcutRelativePath // empty' \
-        "$registry" 2>/dev/null | head -1)
-      [[ -n $taskbar_id && -n $shortcut ]] && break
-    fi
-    sleep 0.1
-  done
-
-  if [[ -n $taskbar_id && -f $registry ]]; then
-    registered_url=$(jq -r --arg id "$taskbar_id" \
-      '.taskbarTabs[]? | select(.id == $id) | .startUrl' \
-      "$registry" 2>/dev/null | head -1)
-
-    if [[ -n $registered_url && $registered_url != "$1" ]]; then
-      temporary=$(mktemp "${registry}.XXXXXX")
-      if jq --arg id "$taskbar_id" --arg url "$1" \
-        '(.taskbarTabs[] | select(.id == $id) | .startUrl) = $url' \
-        "$registry" >"$temporary"; then
-        chmod --reference="$registry" "$temporary"
-        mv "$temporary" "$registry"
-        message="Saved the exact web-app URL. Restart Firefox once before reopening it."
-        echo "$message" >&2
-        command -v notify-send >/dev/null 2>&1 && \
-          notify-send "Firefox web app updated" "$message"
-      else
-        rm -f "$temporary"
-      fi
-    fi
-
-    # Firefox creates its own application shortcut. Hide it when an Omarchy
-    # launcher for the same URL already exists, avoiding duplicate search hits.
-    firefox_shortcut="$HOME/.local/share/applications/$shortcut"
-    omarchy_shortcut=""
-    for candidate in "$HOME/.local/share/applications"/*.desktop; do
-      [[ -f $candidate && $candidate != "$firefox_shortcut" ]] || continue
-      if grep -q '^Exec=.*omarchy-launch-webapp' "$candidate" && \
-         grep -Fq -- "$1" "$candidate"; then
-        omarchy_shortcut=$candidate
-        break
-      fi
-    done
-
-    if [[ -n $omarchy_shortcut && -f $firefox_shortcut ]] && \
-       ! grep -q '^NoDisplay=true$' "$firefox_shortcut"; then
-      temporary=$(mktemp "${firefox_shortcut}.XXXXXX")
-      awk '
-        { print }
-        $0 == "[Desktop Entry]" { print "NoDisplay=true" }
-      ' "$firefox_shortcut" >"$temporary"
-      chmod --reference="$firefox_shortcut" "$temporary"
-      mv "$temporary" "$firefox_shortcut"
-      command -v update-desktop-database >/dev/null 2>&1 && \
-        update-desktop-database "$HOME/.local/share/applications"
-    fi
-  fi
-
-  exit 0
-  ;;
-*)
-  exec /usr/share/omarchy/bin/omarchy-launch-webapp "$@"
-  ;;
+    exec "${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-firefox-web-apps/bridge.py" --open "$1"
+    ;;
+  *) exec /usr/share/omarchy/bin/omarchy-launch-webapp "$@" ;;
 esac

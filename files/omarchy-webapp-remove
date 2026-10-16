@@ -1,0 +1,4 @@
+#!/bin/bash
+# Compatibility shim for installations that previously replaced this command.
+# Popup windows have no Firefox registration to remove.
+exec /usr/share/omarchy/bin/omarchy-webapp-remove "$@"

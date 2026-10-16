@@ -10,17 +10,21 @@ backup_dir="$state_dir/backups"
 timestamp=$(date +%Y%m%d-%H%M%S)
 
 launcher="$HOME/.local/bin/omarchy-launch-webapp"
+remover="$HOME/.local/bin/omarchy-webapp-remove"
 environment_file="$config_home/environment.d/90-omarchy-firefox-web-apps.conf"
 hyprland_file="$config_home/hypr/hyprland.lua"
-firefox_root="$config_home/mozilla/firefox"
 
 hypr_begin="-- BEGIN omarchy-firefox-web-apps: user launcher path"
 hypr_end="-- END omarchy-firefox-web-apps: user launcher path"
-firefox_begin="// BEGIN omarchy-firefox-web-apps: Firefox Taskbar Tabs"
 
+if [[ ! -f $hyprland_file ]]; then
+  echo "Hyprland config not found: $hyprland_file" >&2
+  exit 1
+fi
+command -v python3 >/dev/null
 mkdir -p "$HOME/.local/bin" "$config_home/environment.d" "$backup_dir"
 
-if [[ -e $launcher && ! -e $state_dir/launcher.backup ]]; then
+if [[ -e $launcher && ! -e $state_dir/launcher.backup && ! -e $state_dir/launcher.created ]]; then
   launcher_backup="$backup_dir/omarchy-launch-webapp.$timestamp"
   cp -a "$launcher" "$launcher_backup"
   printf '%s\n' "$launcher_backup" >"$state_dir/launcher.backup"
@@ -29,9 +33,16 @@ elif [[ ! -e $launcher && ! -e $state_dir/launcher.created ]]; then
 fi
 
 install -m 0755 "$project_dir/files/omarchy-launch-webapp" "$launcher"
-cat >"$environment_file" <<'EOF'
-PATH=${HOME}/.local/bin:${PATH}
-EOF
+
+if [[ -e $remover && ! -e $state_dir/remover.backup && ! -e $state_dir/remover.created ]]; then
+  remover_backup="$backup_dir/omarchy-webapp-remove.$timestamp"
+  cp -a "$remover" "$remover_backup"
+  printf '%s\n' "$remover_backup" >"$state_dir/remover.backup"
+elif [[ ! -e $remover && ! -e $state_dir/remover.created ]]; then
+  : >"$state_dir/remover.created"
+fi
+
+install -m 0755 "$project_dir/files/omarchy-webapp-remove" "$remover"
 
 if [[ ! -f $hyprland_file ]]; then
   echo "Hyprland config not found: $hyprland_file" >&2
@@ -57,20 +68,7 @@ end
 EOF
 fi
 
-profile_relative=$(sed -n 's/^Default=//p' "$firefox_root/installs.ini" 2>/dev/null | head -1)
-profile="$firefox_root/$profile_relative"
-user_js="$profile/user.js"
-
-if [[ -z $profile_relative || ! -d $profile ]]; then
-  echo "Could not find Firefox's active profile from $firefox_root/installs.ini" >&2
-  exit 1
-fi
-
-if [[ ! -f $user_js ]] || ! grep -Fqx -- "$firefox_begin" "$user_js"; then
-  [[ ! -f $user_js ]] || cp -a "$user_js" "$backup_dir/user.js.$timestamp"
-  printf '\n' >>"$user_js"
-  cat "$project_dir/files/firefox-user.js" >>"$user_js"
-fi
+python3 "$project_dir/scripts/native-install.py" install
 
 if command -v hyprctl >/dev/null 2>&1 && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
   hyprctl reload
@@ -83,10 +81,9 @@ if command -v hyprctl >/dev/null 2>&1 && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} 
 fi
 
 cat <<EOF
-omarchy-firefox-web-apps installed.
-
-Restart Firefox once so it reads:
-  $user_js
-
-Then open Ctrl+Space -> Learn -> Omarchy.
+Popup bridge installed. In Firefox, open about:debugging#/runtime/this-firefox,
+choose Load Temporary Add-on, and select:
+  $project_dir/extension/manifest.json
+Load this in just the profile whose existing session you want to use.
+Unsigned temporary add-ons must be loaded again after restarting Firefox.
 EOF

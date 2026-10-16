@@ -1,0 +1,17 @@
+{
+  "manifest_version": 2,
+  "name": "Omarchy Web Apps",
+  "version": "0.2.0",
+  "description": "Open Omarchy web apps as Firefox popup windows using your existing session.",
+  "browser_specific_settings": {
+    "gecko": { 
+            "id": "webapps@omarchy-firefox-web-apps.local",
+            "data_collection_permissions": {
+                "required": ["none"]
+            }
+    }
+  },
+  "permissions": ["nativeMessaging"],
+  "background": { "scripts": ["background.js"] },
+  "browser_action": { "default_title": "Firefox web apps: connecting" }
+}

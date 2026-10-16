@@ -8,9 +8,9 @@ state_home=${XDG_STATE_HOME:-$HOME/.local/state}
 state_dir="$state_home/omarchy-firefox-web-apps"
 
 launcher="$HOME/.local/bin/omarchy-launch-webapp"
+remover="$HOME/.local/bin/omarchy-webapp-remove"
 environment_file="$config_home/environment.d/90-omarchy-firefox-web-apps.conf"
 hyprland_file="$config_home/hypr/hyprland.lua"
-firefox_root="$config_home/mozilla/firefox"
 
 remove_managed_block() {
   local file=$1 begin=$2 end=$3 temporary
@@ -35,17 +35,21 @@ elif [[ -f $state_dir/launcher.created ]] && \
   rm -f "$launcher"
 fi
 
-rm -f "$environment_file"
+if [[ -f $state_dir/remover.backup ]]; then
+  remover_backup=$(cat "$state_dir/remover.backup")
+  if [[ -f $remover_backup ]]; then
+    install -m 0755 "$remover_backup" "$remover"
+  fi
+elif [[ -f $state_dir/remover.created ]] && \
+     cmp -s "$remover" "$project_dir/files/omarchy-webapp-remove"; then
+  rm -f "$remover"
+fi
+
 remove_managed_block "$hyprland_file" \
   "-- BEGIN omarchy-firefox-web-apps: user launcher path" \
   "-- END omarchy-firefox-web-apps: user launcher path"
 
-profile_relative=$(sed -n 's/^Default=//p' "$firefox_root/installs.ini" 2>/dev/null | head -1)
-if [[ -n $profile_relative ]]; then
-  remove_managed_block "$firefox_root/$profile_relative/user.js" \
-    "// BEGIN omarchy-firefox-web-apps: Firefox Taskbar Tabs" \
-    "// END omarchy-firefox-web-apps: Firefox Taskbar Tabs"
-fi
+python3 "$project_dir/scripts/native-install.py" uninstall
 
 if command -v hyprctl >/dev/null 2>&1 && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
   hyprctl reload
@@ -56,6 +60,7 @@ if command -v hyprctl >/dev/null 2>&1 && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} 
   fi
 fi
 
-rm -rf "$state_dir"
+rm -f "$state_dir/launcher.backup" "$state_dir/launcher.created" \
+  "$state_dir/remover.backup" "$state_dir/remover.created"
 
-echo "omarchy-firefox-web-apps removed. Restart Firefox to finish disabling Taskbar Tabs."
+echo "omarchy-firefox-web-apps removed. Remove the Omarchy Firefox Web Apps extension in Firefox."
